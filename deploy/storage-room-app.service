@@ -8,7 +8,8 @@ Type=simple
 User=storage-room
 Group=storage-room
 WorkingDirectory=/opt/storage-room-app
-Environment=PORT=8080
+Environment=HOST=127.0.0.1
+Environment=PORT=5432
 Environment=COOKIE_SECURE=1
 ExecStart=/usr/bin/python3 /opt/storage-room-app/app.py
 Restart=on-failure

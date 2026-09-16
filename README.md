@@ -1,32 +1,37 @@
 # Storage Room App
 
-A lightweight, self-hosted inventory web app for storage rooms, cabinets and shelves. Designed for phones, tablets, wall-mounted kiosk displays and small Linux hosts such as a Raspberry Pi.
+A lightweight, self-hosted inventory web app for storage rooms, cabinets and shelves. It is designed for phones, tablets, wall-mounted kiosk displays and small home servers.
+
+The backend uses only the Python standard library and SQLite. The room plan and shelf visualizations are rendered in the browser with HTML/CSS/SVG, so the server remains lightweight.
 
 ## Features
 
 - Multiple storage rooms
-- Interactive top-down **room plan** per storage room
-- Lightweight admin room planner built with native SVG (no WebGL or frontend framework)
-- Drag storage locations into position and configure room dimensions
-- Optional doors, windows and obstacles in the floor plan
-- Search-aware floor plan: locations containing matching inventory are highlighted automatically
-- Tap a location in the plan to filter its inventory
-- Alternative compact location/cabinet overview
+- Interactive top-down room plan per room
+- Lightweight SVG room planner with draggable storage locations
+- Doors, windows and neutral obstacles in the plan
+- Search-aware room plan: matching locations are highlighted automatically
+- **Dedicated Shelves view:** switch directly between front-facing shelf visualizations for every storage location
+- Search results also highlight the matching shelf inside the front view
+- Real shelf records per storage location (1–32), with add/delete/rename/reorder
+- Drag-and-drop location ordering, shelf ordering and item moves between shelves
+- Reliable pointer sorting for wrapped location grids, including dropping after the final card
+- Inline shelf preview from the Locations overview
 - Searchable inventory with categories, shelves, quantities and notes
-- Local authentication with admin and user accounts
-- Admin-managed user creation
-- Explicit sign-out from the main UI and account settings
-- Per-device kiosk mode with a configurable default room
-- Browser fullscreen kiosk mode where the Fullscreen API is available
-- Read-only kiosk UI: room switching, search and location filtering remain available while editing/admin controls are locked
-- Responsive phone/tablet/desktop UI
-- SQLite persistence
-- No Python packages required: Python standard library only
-- In-place migration of previous databases
-
-## Why SVG for the room planner?
-
-The room plan intentionally uses plain SVG and small JSON geometry instead of Canvas/WebGL or a large JavaScript framework. The server only persists room dimensions and coordinates. Rendering, highlighting and drag interaction happen in the browser, so even a very small server only has to serve HTML/CSS/JS and SQLite data.
+- Local authentication with salted PBKDF2-SHA256 password hashes
+- Three roles: **Admin**, **User**, **Read-only**
+- Per-user room permissions
+- Normal users use an opt-out model and start with access to all rooms
+- Read-only users use explicit room assignment and are ideal for kiosk/guest accounts
+- Admins can change roles, room assignments, account status and passwords
+- Current account is visible in the header with a selectable Man/Woman/Robot profile icon
+- Users can change their own display name and profile icon from **Settings → Account**
+- Per-device kiosk mode with configurable default room
+- Browser fullscreen kiosk mode where supported
+- SQLite persistence and automatic in-place database migration
+- No frontend framework, npm runtime or WebGL dependency
+- Containerfile + Compose configuration for a small server/Proxmox deployment
+- Dependency-free smoke tests
 
 ## Quick start
 
@@ -34,76 +39,185 @@ The room plan intentionally uses plain SVG and small JSON geometry instead of Ca
 python3 app.py
 ```
 
-Open `http://localhost:8080`. On a fresh database, the application prints a randomly generated initial admin password to stdout. You can explicitly bootstrap credentials with:
+Open `http://localhost:5432`.
+
+On a fresh database the application creates an initial administrator. If no password is supplied, it prints a random password to stdout. For a predictable first local start:
 
 ```bash
-ADMIN_USERNAME=admin ADMIN_PASSWORD='use-a-long-password' python3 app.py
+ADMIN_USERNAME=admin \
+ADMIN_PASSWORD='use-a-long-password' \
+python3 app.py
 ```
 
-Do not commit credentials or the SQLite database.
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` are only used when the database contains no users.
 
-## Room planner
+## Roles and room permissions
 
-Administrators can open **Settings → Room planner** for the currently selected storage room.
+### Admin
 
-1. Set the room width and depth in metres.
-2. Drag each storage location into place.
-3. Adjust exact X/Y position, footprint and rotation in the inspector.
-4. Optionally add doors, windows and neutral obstacles.
-5. Use **Auto arrange** as a quick starting point. Location groups named e.g. `Left`, `Right`, `Front` or `Back` are placed against their corresponding wall when possible.
-6. Save the plan.
+Administrators always see all rooms and can manage rooms, locations, plans, users and inventory.
 
-The inventory and plan are linked by location ID. Renaming a cabinet/location therefore does not break the room plan.
+### User
 
-When a user searches for an item, every location containing a match is highlighted in the floor plan. If matching items contain a shelf/level value, the highlighted location shows that shelf information directly in the plan.
+Normal users can browse and edit inventory in assigned rooms. A new User is assigned all rooms that already exist. Newly created rooms are also automatically granted to normal users, making this an **opt-out** model. An administrator can uncheck individual rooms for a user.
+
+### Read-only
+
+Read-only accounts can browse/search only the rooms explicitly assigned by an administrator. They cannot modify inventory or administration data. The backend enforces this permission on API writes as well as the UI.
+
+A dedicated Read-only account is recommended for a wall tablet or guest kiosk.
+
+See [`docs/USERS-AND-KIOSK.md`](docs/USERS-AND-KIOSK.md) for details.
+
+Shelf and drag/drop behaviour is documented in [`docs/SHELVES-AND-ORDERING.md`](docs/SHELVES-AND-ORDERING.md).
+
+## Room plan, locations and shelves
+
+Administrators can open **Settings → Room planner** and switch the **Planning room** directly inside the planner. Position and size fields use 1 cm precision, and door/window geometry is anchored to its wall position so rotated fixtures stay where their coordinates indicate. Room geometry is independent from shelf configuration.
+
+Each storage location now owns **real shelf records** rather than a visual shelf count. A location always has between **1 and 32 shelves**. Open **Settings → Locations → Edit** to:
+
+- add or delete empty shelves;
+- rename shelves inline;
+- drag shelves into a new order;
+- edit the location name/code/group/notes.
+
+The shelf order is the canonical order used by the front view and by item shelf dropdowns. Existing V7 databases are migrated automatically: the old configured shelf count becomes real `Shelf 1 … Shelf N` records and numeric legacy item assignments are linked to the matching shelf.
+
+### Locations overview
+
+The **Locations** view is optimized for everyday use:
+
+- tap a location once to expand a compact shelf preview directly in the same page;
+- use **Open full view** for the detailed shelf/front view;
+- administrators can drag the `⋮⋮` handle to reorder locations.
+
+Location order is global within the room and immediately affects the left-hand list, the item location dropdown and the shelf-location dropdown. An explicit Open button is used instead of a long press because it is discoverable and behaves consistently with mouse, touch and accessibility input.
+
+### Moving inventory
+
+In the full shelf view, writable users can drag an item directly onto another shelf **inside the same storage location**. The move is persisted immediately. Clicking/tapping an item without dragging still opens the normal item editor. Read-only and kiosk accounts cannot move items.
+
+When search is active, matching locations, shelves and items remain highlighted.
+
+## Browser credential autofill
+
+Some browser/password-manager heuristics can mistake an inventory search box for a username field after a refresh. The search field now:
+
+- uses a unique field name for every page load;
+- declares autocomplete/password-manager ignore hints;
+- clears unsolicited late autofill values until the user actually interacts with the search field.
+
+Browsers and extensions ultimately control autofill, so no web application can guarantee behaviour for every third-party password manager, but this prevents the common Chrome/Safari/manager cases without disabling real login autofill on the sign-in page.
+
+## Kiosk mode
+
+Kiosk settings are stored locally in the browser. Open **Settings → Kiosk**, enable kiosk mode and select a default room.
+
+When enabled:
+
+- the room plan is the default visualization;
+- the browser is asked to enter fullscreen;
+- the selected room opens by default;
+- room switching and inventory search remain available;
+- editing/admin controls are locked;
+- common browser context-menu/zoom/navigation interactions are blocked on a best-effort basis;
+- leaving fullscreen displays a gate for returning to fullscreen or explicitly exiting kiosk mode.
+
+A website cannot completely lock an operating system. For a wall tablet combine this with Android screen pinning/dedicated-device mode, iPad Guided Access, Chromium `--kiosk`, or another OS-level kiosk feature.
+
+Use a **Read-only** account for kiosk devices so leaving the visual kiosk mode still does not grant write access.
 
 ## Configuration
 
 - `HOST` — bind address, default `0.0.0.0`
-- `PORT` — HTTP port, default `8080`
+- `PORT` — HTTP port, default `5432`
 - `STORAGE_ROOM_DB` — SQLite path, default `data/storage-room.db`
-- `ADMIN_USERNAME` / `ADMIN_PASSWORD` — used only when the first user is created
-- `SESSION_TTL` — login session lifetime in seconds, default 14 days
-- `COOKIE_SECURE=1` — recommended when the app is exposed exclusively over HTTPS
+- `ADMIN_USERNAME` / `ADMIN_PASSWORD` — bootstrap credentials for an empty DB only
+- `SESSION_TTL` — session lifetime in seconds, default 14 days
+- `COOKIE_SECURE=1` — set when the public endpoint is HTTPS-only
 
-## Authentication
+## Temporary Cloudflare hosting from a Mac
 
-Passwords are stored as salted PBKDF2-SHA256 hashes. Sessions use random opaque tokens stored as SHA-256 hashes in SQLite. Mutating API requests require a per-session CSRF token. Cookies are `HttpOnly` and `SameSite=Strict`. Signing out invalidates the server-side session and expires the browser cookie.
+For the current Podman + Cloudflare setup, put the named tunnel token in `.env` and run:
 
-For an Internet-facing installation, put the app behind a TLS reverse proxy or a secure tunnel and set `COOKIE_SECURE=1`. Local accounts protect the application itself; an upstream access-control layer can be added as a second boundary.
+```bash
+scripts/mac-stack-up.sh
+```
 
-## Kiosk mode
+This starts the app and `cloudflared` Compose services and uses macOS `caffeinate` so the **display may turn off while the Mac itself remains awake**. Check or stop the stack with:
 
-Kiosk settings are intentionally device-local (`localStorage`). In **Settings → Kiosk**, enable kiosk mode and choose the room this particular browser should open by default.
+```bash
+scripts/mac-stack-status.sh
+scripts/mac-stack-down.sh
+```
 
-When kiosk mode is enabled:
+A closed MacBook lid can still force sleep depending on the clamshell setup. For a one-off Quick Tunnel you can continue to use `cloudflared tunnel --url http://127.0.0.1:5432`. See [`docs/HOSTING.md`](docs/HOSTING.md) for details and the long-term Proxmox layout.
 
-- the app switches to the room-plan view;
-- the app requests browser fullscreen immediately from the user's click;
-- the configured default room is opened;
-- the room selector, search and location filters remain available;
-- adding/editing/deleting inventory and opening Settings are disabled;
-- sign-out is hidden until kiosk mode is left;
-- context menus, drag actions, browser zoom gestures and common browser keyboard shortcuts are blocked on a best-effort basis;
-- if fullscreen is left with `Esc` or by the browser, the app displays a blocking screen that lets the user re-enter fullscreen or leave kiosk mode;
-- a small **Exit kiosk** control remains available and requires confirmation.
+## Container deployment
 
-Browsers intentionally do not allow a website to take over the device completely. For a truly locked wall tablet, combine this app mode with an OS/browser kiosk feature such as Android screen pinning/dedicated-device mode, iPad Guided Access, Chromium `--kiosk`, or a dedicated kiosk browser.
+```bash
+cp .env.example .env
+# edit .env before the first start
+# use COOKIE_SECURE=1 behind HTTPS/Cloudflare; use 0 for plain local HTTP
+docker compose up -d --build
+# or
+podman compose up -d --build
+```
 
-Kiosk mode does **not** bypass authentication. The device must sign in with a normal local account.
+To run the optional Cloudflare Tunnel container too:
+
+```bash
+docker compose --profile tunnel up -d --build
+# or
+podman compose --profile tunnel up -d --build
+```
+
+The app listens on port 5432 and stores the database in `/data/storage-room.db` inside the container. `compose.yaml` bind-mounts the repository's `./data` directory to `/data`, so your existing `data/storage-room.db` is used directly and remains easy to back up.
 
 ## Database upgrades
 
-Existing V3/V4 databases are compatible. V5 adds a `room_layouts` table automatically when the application starts. Existing rooms and inventory are untouched. Rooms without a saved plan receive an automatic browser-side starter layout until an administrator saves a custom plan.
+Previous databases are migrated automatically on startup. **Back up `data/storage-room.db` before every upgrade.**
 
-For a V2 database, point `STORAGE_ROOM_DB` to the old `inventory.db` and start the app once. The old locations/items are migrated into a room named `Storage room`.
+V8 adds normalized `shelves` records and an `items.shelf_id` link. During the first V8 start:
 
-Back up the database before upgrading.
+- each existing location receives 1–32 real shelves based on its previous V7 shelf configuration;
+- existing values such as `Shelf 2`, `Level 2`, `Fach 2` or `2` are linked to the corresponding shelf where possible;
+- custom legacy shelf text that cannot be mapped remains unassigned rather than being discarded.
+
+Existing rooms, users, permissions, items and room-plan geometry are retained.
+
+## Authentication and security
+
+- Passwords: salted PBKDF2-SHA256 hashes
+- Sessions: random opaque tokens, only SHA-256 hashes stored in SQLite
+- Cookies: `HttpOnly`, `SameSite=Strict`, optionally `Secure`
+- Mutating requests: per-session CSRF token required
+- Read-only permissions: enforced server-side
+- Room permissions: enforced on inventory/read APIs server-side
+- Role/status/password changes invalidate affected sessions where appropriate
+- The application prevents removal/demotion of the final active administrator
+
+For Internet-facing use, run behind HTTPS (for example Cloudflare Tunnel) and set `COOKIE_SECURE=1`.
+
+## Tests
+
+Run the dependency-free API smoke suite and the planner geometry regression test:
+
+```bash
+python3 tests/smoke.py
+node tests/planner-geometry.js
+```
+
+The suites cover authentication/permissions, room isolation, normalized shelves and ordering, plus the 1 cm planner snap and wall-anchored door geometry.
 
 ## Project layout
 
 ```text
 app.py
+Containerfile
+compose.yaml
+.env.example
 static/
   app.css
   app.js
@@ -113,8 +227,21 @@ templates/
   login.html
 data/
 deploy/
+docs/
+tests/
 ```
 
-## Production notes
+## Suggested long-term home-server layout
 
-Run the service as an unprivileged user, keep `data/` writable only by that user, back up the SQLite database, and expose only the application port to your reverse proxy/tunnel. The included systemd unit is a starting point; adjust paths and user names to your host.
+A small Proxmox host is a good fit. Keep Home Assistant isolated in its own VM and run Storage Room App plus other lightweight services in a separate Debian VM/LXC/container environment:
+
+```text
+Proxmox
+├── Home Assistant OS VM
+└── Debian LXC / VM
+    ├── storage-room-app
+    ├── cloudflared
+    └── other small services
+```
+
+This keeps the inventory app lightweight while making backups, upgrades and future services much easier to manage.

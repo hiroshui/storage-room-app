@@ -24,15 +24,28 @@
         <button class="btn secondary" id="settings" type="button">Settings</button>
         <button class="btn secondary" id="logoutTop" type="button">Sign out</button>
         <button class="btn" id="add" type="button">+ Item</button>
+        <button id="profileChip" class="profile-chip" type="button" aria-label="Open profile settings">
+          <span id="headerAvatar" class="profile-avatar" aria-hidden="true"></span>
+          <span class="profile-copy"><small>Logged in:</small><strong id="headerUsername">User</strong></span>
+        </button>
       </div>
     </header>
 
     <div class="search">
       <input
         id="q"
+        name="inventory_query"
         type="search"
         placeholder="Search items, categories, shelves…"
         autocomplete="off"
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        data-form-type="other"
+        data-1p-ignore="true"
+        data-lpignore="true"
+        data-bwignore="true"
+        value=""
       >
     </div>
 
@@ -46,6 +59,7 @@
           <div class="segmented" aria-label="Room visualization">
             <button id="showPlan" class="segmented-button active" type="button">Room plan</button>
             <button id="showCabinets" class="segmented-button" type="button">Locations</button>
+            <button id="showShelves" class="segmented-button" type="button">Shelves</button>
           </div>
           <button class="btn secondary mini" id="clearFilter" type="button" hidden>
             Show all
@@ -58,11 +72,25 @@
         <div class="plan-legend">
           <span><i class="legend-dot selected"></i> Selected</span>
           <span><i class="legend-dot match"></i> Search match</span>
-          <span class="plan-help">Tap a storage location to filter its inventory.</span>
+          <span class="plan-help">Tap a storage location to open its shelf view.</span>
         </div>
       </div>
 
       <div id="cabinetView" hidden></div>
+
+      <div id="shelfBrowserView" class="shelf-browser-view" hidden>
+        <div class="shelf-browser-toolbar">
+          <label>
+            Storage location
+            <select id="shelfLocationSelect" aria-label="Storage location"></select>
+          </label>
+          <div>
+            <strong id="shelfBrowserTitle">Shelves</strong>
+            <p id="shelfBrowserMeta" class="hint"></p>
+          </div>
+        </div>
+        <div id="shelfBrowser" class="shelf-view shelf-browser"></div>
+      </div>
     </section>
 
     <main class="content">
@@ -107,7 +135,7 @@
       <div class="grid">
         <label>Name *<input id="name" required></label>
         <label>Location *<select id="location" required></select></label>
-        <label>Shelf / level<input id="shelf"></label>
+        <label>Shelf<select id="shelf"><option value="">Unassigned</option></select></label>
         <label>Category<input id="category"></label>
         <label>Quantity<input id="quantity"></label>
         <label class="full">Notes<textarea id="notes"></textarea></label>
@@ -123,6 +151,23 @@
     </form>
   </dialog>
 
+  <dialog id="locationDialog" class="location-dialog">
+    <div class="formhead">
+      <div>
+        <h2 id="locationViewTitle">Location</h2>
+        <p id="locationViewMeta" class="hint location-view-meta"></p>
+      </div>
+      <button type="button" class="x" data-close aria-label="Close">×</button>
+    </div>
+
+    <div id="shelfView" class="shelf-view"></div>
+
+    <div class="formactions location-view-actions">
+      <button id="filterLocationFromView" type="button" class="btn secondary">Show inventory here</button>
+      <button type="button" class="btn" data-close>Close</button>
+    </div>
+  </dialog>
+
   <dialog id="settingsDialog">
     <div class="formhead">
       <h2>Settings</h2>
@@ -130,15 +175,15 @@
     </div>
 
     <div class="tabs">
-      <button class="tab active" data-tab="rooms" type="button">Rooms</button>
-      <button class="tab" data-tab="locations" type="button">Locations</button>
+      <button class="tab active admin-only" data-tab="rooms" type="button">Rooms</button>
+      <button class="tab admin-only" data-tab="locations" type="button">Locations</button>
       <button class="tab admin-only" data-tab="planner" type="button">Room planner</button>
       <button class="tab" data-tab="kiosk" type="button">Kiosk</button>
       <button class="tab admin-only" data-tab="users" type="button">Users</button>
       <button class="tab" data-tab="account" type="button">Account</button>
     </div>
 
-    <section class="tabpane" id="tab-rooms">
+    <section class="tabpane admin-only" id="tab-rooms">
       <div id="roomEditor"></div>
       <h3>Add room</h3>
       <div class="grid">
@@ -148,13 +193,14 @@
       <button class="btn" id="addRoom" type="button">Add room</button>
     </section>
 
-    <section class="tabpane" id="tab-locations" hidden>
+    <section class="tabpane admin-only" id="tab-locations" hidden>
       <div id="locEditor"></div>
       <h3>Add location</h3>
       <div class="grid">
         <label>Code<input id="newCode" placeholder="L1"></label>
         <label>Name<input id="newLocName" placeholder="Left cabinet 1"></label>
         <label>Group / side<input id="newSide" placeholder="Left"></label>
+        <label>Initial shelves<input id="newLocShelves" type="number" min="1" max="32" step="1" value="5"></label>
       </div>
       <button class="btn" id="addLoc" type="button">Add location</button>
     </section>
@@ -168,9 +214,17 @@
         <button class="btn" id="savePlanner" type="button">Save plan</button>
       </div>
 
+      <div class="planner-room-context">
+        <label>
+          <span>Planning room</span>
+          <select id="plannerRoomSelect" aria-label="Room currently edited in the planner"></select>
+        </label>
+        <p class="hint">Switch rooms here without leaving the planner. The selected room also becomes the active room in the main view.</p>
+      </div>
+
       <div class="planner-toolbar">
-        <label>Room width (m)<input id="plannerWidth" type="number" min="1" max="50" step="0.05"></label>
-        <label>Room depth (m)<input id="plannerHeight" type="number" min="1" max="50" step="0.05"></label>
+        <label>Room width (m)<input id="plannerWidth" type="number" min="1" max="50" step="0.01"></label>
+        <label>Room depth (m)<input id="plannerHeight" type="number" min="1" max="50" step="0.01"></label>
         <button class="btn secondary mini" id="autoArrange" type="button">Auto arrange</button>
         <button class="btn secondary mini" id="addDoor" type="button">+ Door</button>
         <button class="btn secondary mini" id="addWindow" type="button">+ Window</button>
@@ -180,7 +234,7 @@
       <div class="planner-workspace">
         <div class="planner-stage-wrap">
           <div id="plannerStage" class="planner-stage" aria-label="Room layout editor"></div>
-          <p class="hint planner-hint">Drag elements to move them. Positions snap to 5 cm.</p>
+          <p class="hint planner-hint">Drag elements to move them. Positions and sizes use 1 cm steps.</p>
         </div>
         <aside class="planner-inspector">
           <h4>Selected element</h4>
@@ -188,10 +242,10 @@
           <div id="plannerSelection" hidden>
             <strong id="plannerSelectionTitle"></strong>
             <div class="inspector-grid">
-              <label>X (m)<input id="plannerX" type="number" step="0.05"></label>
-              <label>Y (m)<input id="plannerY" type="number" step="0.05"></label>
-              <label>Width (m)<input id="plannerW" type="number" min="0.1" step="0.05"></label>
-              <label>Depth (m)<input id="plannerH" type="number" min="0.1" step="0.05"></label>
+              <label>X (m)<input id="plannerX" type="number" step="0.01"></label>
+              <label>Y (m)<input id="plannerY" type="number" step="0.01"></label>
+              <label>Width (m)<input id="plannerW" type="number" min="0.01" step="0.01"></label>
+              <label>Depth (m)<input id="plannerH" type="number" min="0.01" step="0.01"></label>
               <label>Rotation
                 <select id="plannerRotation">
                   <option value="0">0°</option>
@@ -221,28 +275,179 @@
       <button class="btn" id="saveKiosk" type="button">Save kiosk settings</button>
     </section>
 
-    <section class="tabpane" id="tab-users" hidden>
-      <div id="userEditor"></div>
-      <h3>Add user</h3>
-      <div class="grid">
-        <label>Username<input id="newUsername"></label>
-        <label>Display name<input id="newDisplayName"></label>
-        <label>Password<input id="newPassword" type="password"></label>
-        <label>
-          Role
-          <select id="newRole">
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
-          </select>
-        </label>
+    <section class="tabpane admin-only" id="tab-users" hidden>
+      <div class="section-copy">
+        <h3>Users & room access</h3>
+        <p class="hint">Admins always see everything. Users are assigned to all current and future rooms by default, but an admin can opt them out. Read-only users only see the rooms explicitly selected here and cannot change inventory.</p>
       </div>
-      <button class="btn" id="addUser" type="button">Add user</button>
+      <div id="userEditor" class="user-editor"></div>
+
+      <div class="settings-subcard">
+        <div class="section-copy">
+          <h3>Add user</h3>
+          <p class="hint">Choose the role first, then select the rooms this account may access.</p>
+        </div>
+        <div class="grid">
+          <label>Username<input id="newUsername" autocomplete="off"></label>
+          <label>Display name<input id="newDisplayName" autocomplete="off"></label>
+          <label>Password<input id="newPassword" type="password" autocomplete="new-password"></label>
+          <label>Avatar
+            <select id="newAvatar">
+              <option value="man">Man</option>
+              <option value="woman">Woman</option>
+              <option value="robot" selected>Robot</option>
+            </select>
+          </label>
+          <label>
+            Role
+            <select id="newRole">
+              <option value="user">User</option>
+              <option value="readonly">Read-only</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+        </div>
+        <div id="newUserRoomAccess" class="room-access"></div>
+        <button class="btn" id="addUser" type="button">Add user</button>
+      </div>
     </section>
 
     <section class="tabpane" id="tab-account" hidden>
-      <p id="accountInfo"></p>
-      <button class="btn secondary" id="logout" type="button">Sign out</button>
+      <div class="account-profile-card">
+        <div id="accountAvatarPreview" class="account-avatar-preview" aria-hidden="true"></div>
+        <div class="account-profile-copy">
+          <h3>Your profile</h3>
+          <p id="accountInfo" class="hint"></p>
+        </div>
+      </div>
+      <label>Display name<input id="accountDisplayName" autocomplete="name"></label>
+      <div class="avatar-picker-wrap">
+        <strong>Profile icon</strong>
+        <div id="accountAvatarChoices" class="avatar-picker" role="radiogroup" aria-label="Profile icon"></div>
+      </div>
+      <div class="account-actions">
+        <button class="btn" id="saveProfile" type="button">Save profile</button>
+        <button class="btn secondary" id="logout" type="button">Sign out</button>
+      </div>
     </section>
+  </dialog>
+
+  <dialog id="roomEditDialog">
+    <form id="roomEditForm">
+      <div class="formhead">
+        <div>
+          <h2>Edit room</h2>
+          <p class="hint">Changes are saved inside the app—no browser prompts.</p>
+        </div>
+        <button type="button" class="x" data-close aria-label="Close">×</button>
+      </div>
+      <div class="grid">
+        <label>Name<input id="editRoomName" required></label>
+        <label class="full">Description<textarea id="editRoomDescription"></textarea></label>
+      </div>
+      <div class="formactions">
+        <button type="button" class="btn danger" id="deleteRoomFromDialog">Delete room</button>
+        <div>
+          <button type="button" class="btn secondary" data-close>Cancel</button>
+          <button class="btn" type="submit">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="locationEditDialog">
+    <form id="locationEditForm">
+      <div class="formhead">
+        <div>
+          <h2>Edit storage location</h2>
+          <p class="hint">Edit location details and manage its shelves without leaving the app.</p>
+        </div>
+        <button type="button" class="x" data-close aria-label="Close">×</button>
+      </div>
+      <div class="grid">
+        <label>Code<input id="editLocCode" required></label>
+        <label>Name<input id="editLocName" required></label>
+        <label>Group / side<input id="editLocSide"></label>
+        <label class="full">Notes<textarea id="editLocNotes"></textarea></label>
+      </div>
+      <section class="shelf-manager">
+        <div class="shelf-manager-head">
+          <div>
+            <h3>Shelves</h3>
+            <p class="hint">1–32 shelves. Drag the handle to reorder; item dropdowns follow the same order.</p>
+          </div>
+          <button type="button" class="btn secondary mini" id="addShelf">+ Shelf</button>
+        </div>
+        <div id="editShelfList" class="shelf-editor-list"></div>
+      </section>
+      <div class="formactions">
+        <button type="button" class="btn danger" id="deleteLocationFromDialog">Delete location</button>
+        <div>
+          <button type="button" class="btn secondary" data-close>Cancel</button>
+          <button class="btn" type="submit">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="userDialog">
+    <form id="userForm">
+      <div class="formhead">
+        <h2>Edit user</h2>
+        <button type="button" class="x" data-close aria-label="Close">×</button>
+      </div>
+      <div class="grid">
+        <label>Username<input id="editUsername" disabled></label>
+        <label>Display name<input id="editDisplayName" autocomplete="off"></label>
+        <label>New password<input id="editPassword" type="password" autocomplete="new-password" placeholder="Leave empty to keep current"></label>
+        <label>Avatar
+          <select id="editAvatar">
+            <option value="man">Man</option>
+            <option value="woman">Woman</option>
+            <option value="robot">Robot</option>
+          </select>
+        </label>
+        <label>Role
+          <select id="editRole">
+            <option value="user">User</option>
+            <option value="readonly">Read-only</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <label class="check full"><input type="checkbox" id="editActive"> Account enabled</label>
+      </div>
+      <div class="user-access-edit-copy">
+        <strong>Room access</strong>
+        <span class="hint">Change which storage rooms this account can open.</span>
+      </div>
+      <div id="editUserRoomAccess" class="room-access"></div>
+      <div class="formactions">
+        <span></span>
+        <div>
+          <button type="button" class="btn secondary" data-close>Cancel</button>
+          <button class="btn" type="submit">Save</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog" class="confirm-dialog">
+    <form method="dialog">
+      <div class="formhead">
+        <div>
+          <h2 id="confirmTitle">Confirm</h2>
+          <p id="confirmMessage" class="hint"></p>
+        </div>
+        <button type="button" class="x" id="confirmClose" aria-label="Close">×</button>
+      </div>
+      <div class="formactions">
+        <span></span>
+        <div>
+          <button type="button" class="btn secondary" id="confirmCancel">Cancel</button>
+          <button type="button" class="btn danger" id="confirmAccept">Confirm</button>
+        </div>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

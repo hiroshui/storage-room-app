@@ -1,0 +1,31 @@
+services:
+  storage-room-app:
+    build:
+      context: .
+      dockerfile: Containerfile
+    restart: unless-stopped
+    environment:
+      PORT: "${PORT:-5432}"
+      COOKIE_SECURE: "${COOKIE_SECURE:-0}"
+      SESSION_TTL: "1209600"
+      # ADMIN_USERNAME / ADMIN_PASSWORD are only used to bootstrap an empty DB.
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    volumes:
+      # Keep SQLite on the host for simple upgrades and backups.
+      - ./data:/data
+    ports:
+      # Keep this bound to localhost when Cloudflare Tunnel runs on the host.
+      - "127.0.0.1:5432:5432"
+
+  # Optional: enable this service if you want cloudflared in the same stack.
+  # In Cloudflare, point the public hostname to http://storage-room-app:5432.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      storage-room-app:
+        condition: service_healthy
+
