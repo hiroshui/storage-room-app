@@ -32,6 +32,7 @@ The backend uses only the Python standard library and SQLite. The room plan and 
 - No frontend framework, npm runtime or WebGL dependency
 - Containerfile + Compose configuration for a small server/Proxmox deployment
 - Dependency-free smoke tests
+- Optional AI-assisted shelf/location photo scanning with an in-app review step
 
 ## Quick start
 
@@ -71,6 +72,8 @@ See [`docs/USERS-AND-KIOSK.md`](docs/USERS-AND-KIOSK.md) for details.
 
 Shelf and drag/drop behaviour is documented in [`docs/SHELVES-AND-ORDERING.md`](docs/SHELVES-AND-ORDERING.md).
 
+AI photo scanning is documented in [`docs/AI-SCANNING.md`](docs/AI-SCANNING.md).
+
 ## Room plan, locations and shelves
 
 Administrators can open **Settings → Room planner** and switch the **Planning room** directly inside the planner. Position and size fields use 1 cm precision, and door/window geometry is anchored to its wall position so rotated fixtures stay where their coordinates indicate. Room geometry is independent from shelf configuration.
@@ -99,6 +102,12 @@ Location order is global within the room and immediately affects the left-hand l
 In the full shelf view, writable users can drag an item directly onto another shelf **inside the same storage location**. The move is persisted immediately. Clicking/tapping an item without dragging still opens the normal item editor. Read-only and kiosk accounts cannot move items.
 
 When search is active, matching locations, shelves and items remain highlighted.
+
+## AI-assisted inventory capture
+
+Writable users can photograph a complete storage location or one concrete shelf. The browser downsizes the photo, the backend sends it to the configured OpenAI vision model with room/location/shelf context, and the app shows an editable review list before anything is inserted. Possible duplicate names are flagged. Images are not stored by Storage Room App.
+
+This feature is optional; without `OPENAI_API_KEY` the rest of the application behaves normally and scan buttons stay hidden. ChatGPT Plus and OpenAI API billing are separate products, so API billing must be enabled separately. See [`docs/AI-SCANNING.md`](docs/AI-SCANNING.md).
 
 ## Browser credential autofill
 
@@ -136,6 +145,10 @@ Use a **Read-only** account for kiosk devices so leaving the visual kiosk mode s
 - `ADMIN_USERNAME` / `ADMIN_PASSWORD` — bootstrap credentials for an empty DB only
 - `SESSION_TTL` — session lifetime in seconds, default 14 days
 - `COOKIE_SECURE=1` — set when the public endpoint is HTTPS-only
+- `OPENAI_API_KEY` — optional server-side key for photo inventory scanning
+- `OPENAI_MODEL` — optional vision model, default `gpt-5.6-luna`
+- `AI_SCANNING_ENABLED` — enable/disable AI scanning, default `1`
+- `AI_IMAGE_DETAIL` — `low`, `auto` or `high`, default `high`
 
 ## Temporary Cloudflare hosting from a Mac
 

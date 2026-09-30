@@ -1,5 +1,16 @@
 # Changelog
 
+## V11
+
+- Added optional AI-assisted image scanning for individual shelves and whole storage locations.
+- Photos are resized client-side and reviewed before import; the app does not persist scan photos.
+- Added structured OpenAI Responses API integration using only the Python standard library.
+- Added duplicate hints, editable AI suggestions, shelf reassignment and batch item import.
+- Added **Settings → AI scan** status/configuration view.
+- Added server-side AI permission checks; read-only and kiosk users cannot scan/import.
+- Added OpenAI/AI environment settings to Compose and `.env.example`.
+- Fixed the duplicate Room Planner room-selector markup.
+
 ## 10.0.0
 
 - Add a dedicated **Planning room** switcher inside the Room Planner so admins can move between rooms without leaving the planner tab.
@@ -66,3 +77,9 @@
 - Interactive SVG floor plan and room planner.
 - Search-aware location highlighting.
 - Multiple rooms, local authentication and kiosk mode.
+
+## 11.1
+- Fixed `Unable to decode image` on browsers that cannot decode HEIC/HEIF photos.
+- Added server-side image normalization for JPEG, PNG, WebP, HEIC and HEIF.
+- AI scans now always send a normalized JPEG (max 1600 px) to the vision API.
+- Added graceful fallback when the browser cannot decode an otherwise supported image.

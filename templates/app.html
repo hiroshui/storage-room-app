@@ -84,9 +84,12 @@
             Storage location
             <select id="shelfLocationSelect" aria-label="Storage location"></select>
           </label>
-          <div>
-            <strong id="shelfBrowserTitle">Shelves</strong>
-            <p id="shelfBrowserMeta" class="hint"></p>
+          <div class="shelf-browser-title-wrap">
+            <div>
+              <strong id="shelfBrowserTitle">Shelves</strong>
+              <p id="shelfBrowserMeta" class="hint"></p>
+            </div>
+            <button id="scanLocation" class="btn secondary mini ai-scan-control" type="button" hidden>📷 Scan location</button>
           </div>
         </div>
         <div id="shelfBrowser" class="shelf-view shelf-browser"></div>
@@ -163,7 +166,10 @@
     <div id="shelfView" class="shelf-view"></div>
 
     <div class="formactions location-view-actions">
-      <button id="filterLocationFromView" type="button" class="btn secondary">Show inventory here</button>
+      <div class="inline-actions">
+        <button id="scanLocationFromView" type="button" class="btn secondary ai-scan-control" hidden>📷 Scan location</button>
+        <button id="filterLocationFromView" type="button" class="btn secondary">Show inventory here</button>
+      </div>
       <button type="button" class="btn" data-close>Close</button>
     </div>
   </dialog>
@@ -180,6 +186,7 @@
       <button class="tab admin-only" data-tab="planner" type="button">Room planner</button>
       <button class="tab" data-tab="kiosk" type="button">Kiosk</button>
       <button class="tab admin-only" data-tab="users" type="button">Users</button>
+      <button class="tab admin-only" data-tab="ai" type="button">AI scan</button>
       <button class="tab" data-tab="account" type="button">Account</button>
     </div>
 
@@ -312,6 +319,30 @@
       </div>
     </section>
 
+
+    <section class="tabpane admin-only" id="tab-ai" hidden>
+      <div class="section-copy">
+        <h3>AI object recognition</h3>
+        <p class="hint">Shelf photos are resized in the browser, sent through the server to the configured vision model, reviewed in-app, and are not stored by Storage Room App.</p>
+      </div>
+      <div class="ai-status-card">
+        <div><span class="status-dot" id="aiStatusDot"></span><strong id="aiStatusText">Checking…</strong></div>
+        <dl>
+          <div><dt>Provider</dt><dd id="aiProvider">OpenAI</dd></div>
+          <div><dt>Model</dt><dd id="aiModel">—</dd></div>
+          <div><dt>Image detail</dt><dd id="aiImageDetail">—</dd></div>
+        </dl>
+      </div>
+      <div class="settings-subcard">
+        <h3>Server configuration</h3>
+        <p class="hint">Keep the API key in <code>.env</code> or another server-side secret store. Never put it into browser JavaScript or commit it to Git.</p>
+        <pre class="config-snippet">OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.6-luna
+AI_SCANNING_ENABLED=1</pre>
+        <p class="hint">Restart the container after changing environment variables. See <code>docs/AI-SCANNING.md</code> for setup and billing details.</p>
+      </div>
+    </section>
+
     <section class="tabpane" id="tab-account" hidden>
       <div class="account-profile-card">
         <div id="accountAvatarPreview" class="account-avatar-preview" aria-hidden="true"></div>
@@ -429,6 +460,46 @@
         </div>
       </div>
     </form>
+  </dialog>
+
+
+  <dialog id="scanDialog" class="scan-dialog">
+    <div class="formhead">
+      <div>
+        <h2>Scan inventory</h2>
+        <p id="scanTargetLabel" class="hint">Choose a photo of the shelf or location.</p>
+      </div>
+      <button type="button" class="x" data-close aria-label="Close">×</button>
+    </div>
+
+    <input id="scanFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" capture="environment" hidden>
+    <div id="scanCapture" class="scan-capture">
+      <div id="scanPreviewEmpty" class="scan-preview-empty">
+        <span class="scan-camera" aria-hidden="true">📷</span>
+        <strong>Take or choose a photo</strong>
+        <span>Keep the shelf well lit and visible from the front.</span>
+      </div>
+      <img id="scanPreview" alt="Selected inventory photo" hidden>
+    </div>
+    <div class="scan-actions">
+      <button id="scanChoosePhoto" class="btn secondary" type="button">Choose photo</button>
+      <button id="scanAnalyze" class="btn" type="button" disabled>Analyze photo</button>
+    </div>
+    <div id="scanProgress" class="scan-progress" hidden>Analyzing visible objects…</div>
+    <div id="scanResults" class="scan-results" hidden>
+      <div class="scan-results-head">
+        <div>
+          <h3>Review detected items</h3>
+          <p id="scanSummary" class="hint"></p>
+        </div>
+        <label class="scan-select-all"><input id="scanSelectAll" type="checkbox" checked> Select all</label>
+      </div>
+      <div id="scanSuggestionList" class="scan-suggestion-list"></div>
+      <div class="formactions">
+        <button id="scanRetake" class="btn secondary" type="button">Use another photo</button>
+        <button id="scanImport" class="btn" type="button">Add selected items</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="confirmDialog" class="confirm-dialog">

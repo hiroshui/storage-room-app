@@ -94,6 +94,8 @@ def main() -> int:
             admin = Client(base)
             admin_me = admin.login("admin", "admin-test-password")
             assert admin_me["role"] == "admin" and admin_me["avatar"] == "robot"
+            ai_status = admin.request("GET", "/api/ai/status")
+            assert ai_status["provider"] == "OpenAI" and ai_status["configured"] is False
             profile = admin.request("PUT", "/api/me", {"display_name": "Storage Admin", "avatar": "woman"})
             assert profile["avatar"] == "woman" and profile["display_name"] == "Storage Admin"
             assert admin.request("GET", "/api/me")["avatar"] == "woman"

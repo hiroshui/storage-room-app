@@ -11,6 +11,12 @@ services:
       # ADMIN_USERNAME / ADMIN_PASSWORD are only used to bootstrap an empty DB.
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      # Optional AI-assisted inventory scanning. Keep the key server-side only.
+      AI_SCANNING_ENABLED: "${AI_SCANNING_ENABLED:-1}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-gpt-5.6-luna}"
+      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-https://api.openai.com/v1}"
+      AI_IMAGE_DETAIL: "${AI_IMAGE_DETAIL:-high}"
     volumes:
       # Keep SQLite on the host for simple upgrades and backups.
       - ./data:/data

@@ -9,6 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN useradd --system --uid 10001 --create-home --home-dir /app storage-room
 WORKDIR /app
 
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY app.py ./
 COPY static ./static
 COPY templates ./templates

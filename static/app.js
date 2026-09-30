@@ -47,6 +47,8 @@ const elements = {
   locationViewMeta: $('#locationViewMeta'),
   shelfView: $('#shelfView'),
   filterLocationFromView: $('#filterLocationFromView'),
+  scanLocation: $('#scanLocation'),
+  scanLocationFromView: $('#scanLocationFromView'),
   settingsDialog: $('#settingsDialog'),
   roomEditor: $('#roomEditor'),
   locEditor: $('#locEditor'),
@@ -89,6 +91,26 @@ const elements = {
   accountAvatarChoices: $('#accountAvatarChoices'),
   accountDisplayName: $('#accountDisplayName'),
   saveProfile: $('#saveProfile'),
+  aiStatusDot: $('#aiStatusDot'),
+  aiStatusText: $('#aiStatusText'),
+  aiProvider: $('#aiProvider'),
+  aiModel: $('#aiModel'),
+  aiImageDetail: $('#aiImageDetail'),
+  scanDialog: $('#scanDialog'),
+  scanTargetLabel: $('#scanTargetLabel'),
+  scanFile: $('#scanFile'),
+  scanCapture: $('#scanCapture'),
+  scanPreviewEmpty: $('#scanPreviewEmpty'),
+  scanPreview: $('#scanPreview'),
+  scanChoosePhoto: $('#scanChoosePhoto'),
+  scanAnalyze: $('#scanAnalyze'),
+  scanProgress: $('#scanProgress'),
+  scanResults: $('#scanResults'),
+  scanSummary: $('#scanSummary'),
+  scanSelectAll: $('#scanSelectAll'),
+  scanSuggestionList: $('#scanSuggestionList'),
+  scanRetake: $('#scanRetake'),
+  scanImport: $('#scanImport'),
   logout: $('#logout'),
   kioskEnabled: $('#kioskEnabled'),
   kioskRoom: $('#kioskRoom'),
@@ -154,6 +176,10 @@ const state = {
   previewLocationId: null,
   itemDrag: null,
   profileAvatarDraft: 'robot',
+  aiStatus: { enabled: false, configured: false, can_scan: false, provider: 'OpenAI', model: '', image_detail: '' },
+  scanTarget: null,
+  scanImageData: '',
+  scanResult: null,
 };
 
 const DEFAULT_VIEWPORT = 'width=device-width, initial-scale=1, viewport-fit=cover';
@@ -374,6 +400,8 @@ function setKioskUi(enabled) {
   elements.viewportMeta.setAttribute('content', enabled ? KIOSK_VIEWPORT : DEFAULT_VIEWPORT);
   if (enabled && elements.settingsDialog.open) elements.settingsDialog.close();
   if (enabled && elements.itemDialog.open) elements.itemDialog.close();
+  if (enabled && elements.scanDialog?.open) elements.scanDialog.close();
+  updateAiUi();
 }
 
 function shouldShowKioskGate() {
@@ -432,6 +460,25 @@ function guardKioskAction(event) {
 
 function canWriteItems() {
   return Boolean(state.me?.can_write) && !isKioskMode();
+}
+
+function canUseAiScan() {
+  return Boolean(state.aiStatus?.configured && state.aiStatus?.enabled && state.aiStatus?.can_scan && canWriteItems());
+}
+
+function updateAiUi() {
+  const available = canUseAiScan();
+  if (elements.scanLocation) elements.scanLocation.hidden = !available;
+  if (elements.scanLocationFromView) elements.scanLocationFromView.hidden = !available;
+  if (elements.aiStatusText) {
+    const configured = Boolean(state.aiStatus?.configured);
+    elements.aiStatusText.textContent = configured ? 'Configured' : (state.aiStatus?.enabled ? 'API key missing' : 'Disabled');
+    elements.aiStatusDot.classList.toggle('ok', configured);
+    elements.aiStatusDot.classList.toggle('off', !configured);
+    elements.aiProvider.textContent = state.aiStatus?.provider || 'OpenAI';
+    elements.aiModel.textContent = state.aiStatus?.model || '—';
+    elements.aiImageDetail.textContent = state.aiStatus?.image_detail || '—';
+  }
 }
 
 function guardWriteAction(event) {
@@ -521,6 +568,9 @@ async function saveOwnProfile() {
 async function boot() {
   state.me = await api('/api/me');
   state.csrf = state.me.csrf;
+  try { state.aiStatus = await api('/api/ai/status'); }
+  catch (error) { console.warn('AI status unavailable', error); }
+  updateAiUi();
   $$('.admin-only').forEach((element) => {
     if (state.me.role !== 'admin') element.hidden = true;
     else if (!element.classList.contains('tabpane')) element.hidden = false;
@@ -698,6 +748,7 @@ function renderCabinets() {
     renderCabinets();
   }));
   elements.cabinetView.querySelector('[data-open-location]')?.addEventListener('click', () => openLocationView(Number(state.previewLocationId)));
+  elements.cabinetView.querySelector('[data-scan-location]')?.addEventListener('click', () => openScanDialog(Number(state.previewLocationId)));
   elements.cabinetView.querySelector('[data-filter-location]')?.addEventListener('click', () => {
     const location = state.locations.find((entry) => entry.id === Number(state.previewLocationId));
     if (location) setActiveLocation(location.code);
@@ -779,7 +830,10 @@ function shelfMarkup(location, { compact = false } = {}) {
       ? (items.length ? `<span class="shelf-preview-items">${items.slice(0, 3).map((item) => escapeHtml(item.name)).join(' · ')}${items.length > 3 ? ` +${items.length - 3}` : ''}</span>` : '<span class="shelf-empty">Empty</span>')
       : (items.length ? items.map((item) => shelfItemMarkup(item, queryActive)).join('') : '<span class="shelf-empty">Empty</span>');
     return `<section class="shelf-level${hasMatch ? ' search-match' : ''}" data-shelf-id="${shelf.id}">
-      <div class="shelf-label"><span>${escapeHtml(shelf.name)}</span><small>${items.length} item${items.length === 1 ? '' : 's'}</small></div>
+      <div class="shelf-label">
+        <div class="shelf-label-copy"><span>${escapeHtml(shelf.name)}</span><small>${items.length} item${items.length === 1 ? '' : 's'}</small></div>
+        ${!compact && canUseAiScan() ? `<button class="shelf-scan-button" type="button" data-scan-shelf="${shelf.id}" aria-label="Scan ${escapeHtml(shelf.name)}" title="Scan shelf">📷</button>` : ''}
+      </div>
       <div class="shelf-items">${itemMarkup}</div>
     </section>`;
   }).join('');
@@ -801,6 +855,7 @@ function compactShelfPreview(location) {
         <span>${shelfCountForLocation(location)} shelves · ${itemCount} item${itemCount === 1 ? '' : 's'}</span>
       </div>
       <div class="inline-actions">
+        ${canUseAiScan() ? '<button class="btn secondary mini" data-scan-location type="button">📷 Scan</button>' : ''}
         <button class="btn secondary mini" data-filter-location type="button">Show inventory</button>
         <button class="btn mini" data-open-location type="button">Open full view</button>
       </div>
@@ -908,11 +963,22 @@ function bindShelfItemActions(container, { closeDialog = false } = {}) {
   }
 }
 
+function bindShelfScanActions(container, location) {
+  if (!container || !location || !canUseAiScan()) return;
+  container.querySelectorAll('[data-scan-shelf]').forEach((button) => button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openScanDialog(location.id, Number(button.dataset.scanShelf));
+  }));
+}
+
 function renderShelfView(location) {
   if (!location || !elements.shelfView) return;
   elements.shelfView.innerHTML = shelfMarkup(location);
   bindShelfItemActions(elements.shelfView, { closeDialog: true });
+  bindShelfScanActions(elements.shelfView, location);
 }
+
 
 function renderShelfBrowser(locationId = state.shelfBrowserLocationId) {
   if (!elements.shelfBrowser) return;
@@ -935,7 +1001,10 @@ function renderShelfBrowser(locationId = state.shelfBrowserLocationId) {
   elements.shelfBrowserMeta.textContent = `${shelfCountForLocation(active)} shelves · ${itemCount} ${itemCount === 1 ? 'item' : 'items'}${active.side ? ` · ${active.side}` : ''}`;
   elements.shelfBrowser.innerHTML = shelfMarkup(active);
   bindShelfItemActions(elements.shelfBrowser);
+  bindShelfScanActions(elements.shelfBrowser, active);
+  updateAiUi();
 }
+
 
 function showShelvesForLocation(codeOrId) {
   const location = state.locations.find((entry) => entry.code === String(codeOrId) || entry.id === Number(codeOrId));
@@ -1620,6 +1689,249 @@ async function addLocation() {
   } catch (error) { toast(error.message); }
 }
 
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Unable to read image'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function imageMimeForFile(file) {
+  const declared = String(file?.type || '').toLowerCase();
+  if (declared.startsWith('image/')) return declared === 'image/jpg' ? 'image/jpeg' : declared;
+  const name = String(file?.name || '').toLowerCase();
+  if (name.endsWith('.heic')) return 'image/heic';
+  if (name.endsWith('.heif')) return 'image/heif';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  return '';
+}
+
+function normalizeDataUrlMime(dataUrl, mime) {
+  if (!mime || !String(dataUrl).startsWith('data:')) return dataUrl;
+  return String(dataUrl).replace(/^data:[^;,]*/, `data:${mime}`);
+}
+
+function loadBrowserImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('browser-decode-failed')); };
+    image.src = url;
+  });
+}
+
+async function prepareScanImage(file) {
+  if (!file) throw new Error('Choose an image file');
+  const mime = imageMimeForFile(file);
+  const supported = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+  if (!supported.includes(mime)) throw new Error('Choose a JPEG, PNG, WebP, HEIC or HEIF image');
+
+  // HEIC/HEIF is not consistently decodable by browsers (notably Chromium).
+  // Send it untouched to the server, where Pillow + pillow-heif normalizes it.
+  if (mime === 'image/heic' || mime === 'image/heif') {
+    return normalizeDataUrlMime(await blobToDataUrl(file), mime);
+  }
+
+  try {
+    const image = await loadBrowserImage(file);
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+    const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: false });
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    const blob = await new Promise((resolve, reject) => canvas.toBlob(
+      (value) => value ? resolve(value) : reject(new Error('Unable to compress image')),
+      'image/jpeg',
+      0.82,
+    ));
+    return blobToDataUrl(blob);
+  } catch (error) {
+    // Some browsers occasionally fail to decode otherwise valid JPEG/PNG/WebP
+    // files. Let the server perform the normalization instead of failing here.
+    if (error?.message === 'browser-decode-failed') {
+      return normalizeDataUrlMime(await blobToDataUrl(file), mime);
+    }
+    throw error;
+  }
+}
+
+function resetScanDialog({ keepImage = false } = {}) {
+  state.scanResult = null;
+  elements.scanResults.hidden = true;
+  elements.scanProgress.hidden = true;
+  elements.scanSuggestionList.innerHTML = '';
+  elements.scanSummary.textContent = '';
+  elements.scanSelectAll.checked = true;
+  elements.scanImport.disabled = false;
+  if (!keepImage) {
+    state.scanImageData = '';
+    elements.scanFile.value = '';
+    elements.scanPreview.removeAttribute('src');
+    elements.scanPreview.hidden = true;
+    elements.scanPreviewEmpty.hidden = false;
+    elements.scanPreviewEmpty.textContent = 'Choose or take a photo';
+    elements.scanAnalyze.disabled = true;
+  }
+}
+
+function scanTargetDescription(location, shelf) {
+  return shelf
+    ? `${location.code} · ${location.name} → ${shelf.name}`
+    : `${location.code} · ${location.name} → whole location`;
+}
+
+function openScanDialog(locationId, shelfId = null) {
+  if (!canUseAiScan()) {
+    toast(state.aiStatus?.configured ? 'AI scanning is not available for this account' : 'Configure an OpenAI API key first');
+    return;
+  }
+  const location = state.locations.find((entry) => entry.id === Number(locationId));
+  if (!location) return;
+  const shelf = shelfId ? state.shelves.find((entry) => entry.id === Number(shelfId) && Number(entry.location_id) === location.id) : null;
+  state.scanTarget = { locationId: location.id, shelfId: shelf?.id || null };
+  resetScanDialog();
+  elements.scanTargetLabel.textContent = scanTargetDescription(location, shelf);
+  elements.scanDialog.showModal();
+}
+
+async function chooseScanPhoto(file) {
+  if (!file) return;
+  elements.scanAnalyze.disabled = true;
+  elements.scanProgress.hidden = false;
+  elements.scanProgress.textContent = 'Preparing photo…';
+  try {
+    state.scanImageData = await prepareScanImage(file);
+    const previewable = !/^data:image\/(heic|heif)/i.test(state.scanImageData);
+    if (previewable) {
+      elements.scanPreview.src = state.scanImageData;
+      elements.scanPreview.hidden = false;
+      elements.scanPreviewEmpty.hidden = true;
+    } else {
+      elements.scanPreview.removeAttribute('src');
+      elements.scanPreview.hidden = true;
+      elements.scanPreviewEmpty.hidden = false;
+      elements.scanPreviewEmpty.textContent = 'HEIC/HEIF selected — it will be converted securely on the server.';
+    }
+    elements.scanAnalyze.disabled = false;
+    elements.scanProgress.hidden = true;
+    elements.scanResults.hidden = true;
+  } catch (error) {
+    elements.scanProgress.hidden = true;
+    toast(error.message);
+  }
+}
+
+function scanDuplicateMarkup(item) {
+  if (!item.existing_matches?.length) return '';
+  const places = item.existing_matches.map((entry) => entry.shelf_name || 'Unassigned').filter(Boolean);
+  return `<div class="scan-duplicate">Possible duplicate: already stored ${places.length ? `in ${escapeHtml([...new Set(places)].join(', '))}` : 'in this location'}.</div>`;
+}
+
+function renderScanSuggestions(result) {
+  const targetLocation = state.locations.find((entry) => entry.id === Number(result.location_id));
+  const shelves = getShelvesForLocation(result.location_id);
+  state.scanResult = result;
+  elements.scanSummary.textContent = result.summary || `${result.items.length} item suggestions detected.`;
+  elements.scanSuggestionList.innerHTML = result.items.map((item, index) => {
+    const confidence = Math.round(Number(item.confidence || 0) * 100);
+    const shelfOptions = `<option value="">Unassigned</option>${shelves.map((shelf) => `<option value="${shelf.id}" ${Number(item.shelf_id) === shelf.id ? 'selected' : ''}>${escapeHtml(shelf.name)}</option>`).join('')}`;
+    return `<article class="scan-suggestion" data-scan-index="${index}">
+      <label class="scan-suggestion-check" title="Import this item"><input type="checkbox" data-scan-selected checked></label>
+      <div class="scan-suggestion-main">
+        <div class="scan-suggestion-top">
+          <input data-scan-field="name" value="${escapeHtml(item.name)}" aria-label="Item name">
+          <span class="confidence-badge" title="Visual confidence">${confidence}%</span>
+        </div>
+        <div class="scan-suggestion-fields">
+          <label>Category<input data-scan-field="category" value="${escapeHtml(item.category || '')}"></label>
+          <label>Quantity<input data-scan-field="quantity" type="number" min="1" max="99" step="1" value="${Math.max(1, Number(item.quantity) || 1)}"></label>
+          <label>Shelf<select data-scan-field="shelf_id">${shelfOptions}</select></label>
+        </div>
+        <label class="scan-notes">Notes<input data-scan-field="notes" value="${escapeHtml(item.notes || '')}"></label>
+        ${scanDuplicateMarkup(item)}
+      </div>
+    </article>`;
+  }).join('') || '<div class="empty compact-empty">No trackable objects were detected. Try another angle or better lighting.</div>';
+  elements.scanSelectAll.checked = Boolean(result.items.length);
+  elements.scanResults.hidden = false;
+  elements.scanImport.disabled = !result.items.length;
+  elements.scanSuggestionList.querySelectorAll('[data-scan-selected]').forEach((checkbox) => checkbox.addEventListener('change', () => {
+    const boxes = [...elements.scanSuggestionList.querySelectorAll('[data-scan-selected]')];
+    elements.scanSelectAll.checked = boxes.length > 0 && boxes.every((box) => box.checked);
+    elements.scanSelectAll.indeterminate = boxes.some((box) => box.checked) && !boxes.every((box) => box.checked);
+  }));
+  if (targetLocation) elements.scanTargetLabel.textContent = scanTargetDescription(targetLocation, result.shelf_id ? state.shelves.find((entry) => entry.id === Number(result.shelf_id)) : null);
+}
+
+async function analyzeScanPhoto() {
+  if (!state.scanImageData || !state.scanTarget || !canUseAiScan()) return;
+  elements.scanAnalyze.disabled = true;
+  elements.scanChoosePhoto.disabled = true;
+  elements.scanResults.hidden = true;
+  elements.scanProgress.hidden = false;
+  elements.scanProgress.textContent = 'Analyzing visible objects…';
+  try {
+    const result = await api('/api/ai/scan', {
+      method: 'POST',
+      body: JSON.stringify({
+        location_id: state.scanTarget.locationId,
+        shelf_id: state.scanTarget.shelfId,
+        image_data_url: state.scanImageData,
+      }),
+    });
+    renderScanSuggestions(result);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    elements.scanProgress.hidden = true;
+    elements.scanAnalyze.disabled = false;
+    elements.scanChoosePhoto.disabled = false;
+  }
+}
+
+function selectedScanItems() {
+  if (!state.scanResult) return [];
+  return [...elements.scanSuggestionList.querySelectorAll('.scan-suggestion')]
+    .filter((row) => row.querySelector('[data-scan-selected]')?.checked)
+    .map((row) => ({
+      name: row.querySelector('[data-scan-field="name"]').value.trim(),
+      category: row.querySelector('[data-scan-field="category"]').value.trim(),
+      quantity: String(Math.max(1, Math.min(99, Number(row.querySelector('[data-scan-field="quantity"]').value) || 1))),
+      shelf_id: Number(row.querySelector('[data-scan-field="shelf_id"]').value) || null,
+      notes: row.querySelector('[data-scan-field="notes"]').value.trim(),
+      location_id: state.scanTarget.locationId,
+    }));
+}
+
+async function importScanItems() {
+  const items = selectedScanItems();
+  if (!items.length) { toast('Select at least one detected item'); return; }
+  if (items.some((item) => !item.name)) { toast('Every selected item needs a name'); return; }
+  elements.scanImport.disabled = true;
+  try {
+    const result = await api('/api/items/bulk', { method: 'POST', body: JSON.stringify({ items }) });
+    await refreshInventory();
+    elements.scanDialog.close();
+    resetScanDialog();
+    toast(`${result.count} item${result.count === 1 ? '' : 's'} added`);
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    elements.scanImport.disabled = false;
+  }
+}
+
 function roleLabel(role) {
   return role === 'readonly' ? 'Read-only' : role === 'admin' ? 'Admin' : 'User';
 }
@@ -2084,6 +2396,7 @@ function switchSettingsTab(tabButton) {
   $$('.tabpane').forEach((pane) => { pane.hidden = pane.id !== `tab-${tabButton.dataset.tab}`; });
   if (tabButton.dataset.tab === 'users') renderUsers();
   if (tabButton.dataset.tab === 'planner') renderPlanner();
+  if (tabButton.dataset.tab === 'ai') updateAiUi();
 }
 
 function saveKioskSettings() {
@@ -2167,6 +2480,17 @@ function registerEvents() {
   elements.location.addEventListener('change', () => updateShelfSuggestions());
   elements.shelfLocationSelect.addEventListener('change', () => renderShelfBrowser(Number(elements.shelfLocationSelect.value)));
   elements.filterLocationFromView.addEventListener('click', filterViewedLocation);
+  elements.scanLocation?.addEventListener('click', () => openScanDialog(Number(state.shelfBrowserLocationId)));
+  elements.scanLocationFromView?.addEventListener('click', () => state.viewingLocation && openScanDialog(state.viewingLocation.id));
+  elements.scanChoosePhoto?.addEventListener('click', () => elements.scanFile.click());
+  elements.scanFile?.addEventListener('change', () => chooseScanPhoto(elements.scanFile.files?.[0]));
+  elements.scanAnalyze?.addEventListener('click', analyzeScanPhoto);
+  elements.scanRetake?.addEventListener('click', () => resetScanDialog());
+  elements.scanImport?.addEventListener('click', importScanItems);
+  elements.scanSelectAll?.addEventListener('change', () => {
+    elements.scanSuggestionList.querySelectorAll('[data-scan-selected]').forEach((checkbox) => { checkbox.checked = elements.scanSelectAll.checked; });
+    elements.scanSelectAll.indeterminate = false;
+  });
   elements.newRole.addEventListener('change', handleNewUserRoleChange);
   elements.editRole.addEventListener('change', handleEditUserRoleChange);
 
